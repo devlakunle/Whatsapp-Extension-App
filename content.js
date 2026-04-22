@@ -41,22 +41,43 @@ async function enterNumberInSearchBox(number) {
   // Wait a bit more for search box to appear
   await delay(500);
 
-  const selector = 'div[role="textbox"][aria-label*="Search"]';
-  let searchBox = null;
+  const cancelButton = document.querySelector(
+    "#app > div > div > div.x78zum5.xdt5ytf.x5yr21d > div > div.x10l6tqk.x13vifvy.x1o0tod.x78zum5.xh8yej3.x5yr21d.x6ikm8r.x10wlt62.x47corl > div._aigw._as6h.false.xevlxbw.x9f619.x1n2onr6.x5yr21d.x17dzmu4.x1i1dayz.x2ipvbc.xjdofhw.x78zum5.xdt5ytf.x570efc.x18dvir5.xxljpkc.xwfak60.x6ikm8r.x10wlt62.x1oy9qf3.xpilrb4.x1t7ytsu.x1vb5itz > div > span > div > span > div > div.x1n2onr6.x11uqc5h.x9f619.x78zum5.x1okw0bk.xl2dz39.xexx8yu.x18d9i69.x73uwhe.x1qhh985.x1sy0etr.x1280gxy.x1gnnqk1.x1phvje8.xcldk2z.x7a106z.x4tpdpg > div > div > div > div > div > div.html-div.xexx8yu.xyri2b.x18d9i69.x1c1uobl.x9f619.xuwfzo9.x6s0dn4.x1o2pa38.xav9cv8.x7g7pl8.x4tpdpg.x1wbi8v6 > div > button > div > div > div:nth-child(1)",
+  );
 
-  searchBox = document.querySelector(selector);
+  if (cancelButton) {
+    console.log(`✅ Found Cancel button`);
+    cancelButton.scrollIntoView({ behavior: "smooth", block: "center" });
+    await delay(300);
+    cancelButton.click();
+    await delay(800); // Wait longer for box to clear
+  }
+
+  // Try new selector first (updated WhatsApp UI)
+  let selector = 'input[role="textbox"][aria-label="Search name or number"]';
+  let searchBox = document.querySelector(selector);
+
+  // Fallback to old selector if new one not found
+  if (!searchBox) {
+    selector = 'input[role="textbox"][aria-label="Search or start a new chat"]';
+    searchBox = document.querySelector(selector);
+  }
+
   if (searchBox) {
     console.log(`✅ Found search box with selector: ${selector}`);
   }
 
   if (!searchBox) {
-    console.log("❌ Search box not found");
+    console.log("❌ Search box not found with any selector");
     return false;
   }
 
   // Focus and clear the search box
+
   searchBox.focus();
   await delay(200);
+
+  searchBox.textContent = "";
 
   // Clear existing content multiple ways
   if (searchBox.tagName === "INPUT") {
@@ -68,52 +89,34 @@ async function enterNumberInSearchBox(number) {
     searchBox.textContent = "";
   }
 
+  document.execCommand("selectAll", false, null);
+  // Delete
+  document.execCommand("delete", false, null);
+
   await delay(300);
 
-  // Enter the number using multiple methods for reliability
+  // Enter the number using the most reliable method
   try {
-    // Method 1: Direct text content
-    if (searchBox.tagName !== "INPUT") {
-      searchBox.textContent = number;
-    } else {
+    // For INPUT elements, set the value directly
+    if (searchBox.tagName === "INPUT") {
       searchBox.value = number;
+    } else {
+      // For contenteditable divs, set text content
+      searchBox.textContent = number;
     }
 
-    // Method 2: execCommand as backup
-    document.execCommand("selectAll", false, null);
-    document.execCommand("insertText", false, number);
-
-    // Method 3: Simulate typing
-    for (let char of number) {
-      searchBox.dispatchEvent(
-        new KeyboardEvent("keydown", { key: char, bubbles: true })
-      );
-      searchBox.dispatchEvent(
-        new KeyboardEvent("keypress", { key: char, bubbles: true })
-      );
-      if (searchBox.tagName === "INPUT") {
-        searchBox.value += char;
-      } else {
-        searchBox.textContent += char;
-      }
-      searchBox.dispatchEvent(
-        new KeyboardEvent("keyup", { key: char, bubbles: true })
-      );
-      await delay(50, 20); // Small delay between characters
-    }
-
-    // Trigger input events
+    // Trigger input events for WhatsApp to detect the change
     searchBox.dispatchEvent(
-      new Event("input", { bubbles: true, cancelable: true })
+      new Event("input", { bubbles: true, cancelable: true }),
     );
     searchBox.dispatchEvent(new Event("change", { bubbles: true }));
     searchBox.dispatchEvent(
-      new KeyboardEvent("keyup", { key: "Enter", bubbles: true })
+      new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
     );
 
     console.log(`✅ Entered "${number}" into search box`);
 
-    // Wait longer for results to populate
+    // Wait for results to populate
     await delay(1500, 300);
     return true;
   } catch (error) {
@@ -126,23 +129,34 @@ async function isNumberFoundInResults(number, timeout = 20000) {
   const startTime = Date.now();
   const interval = 1000;
   const networkErrorInterval = 5000; // Longer interval for network errors
+  const cleanNumber = number.replace(/\D/g, "");
 
-  // Target the search results container with fallback selectors
-  // Try new structure first (for bulk SMS), then old structure (for verify)
-  // New container: div with classes containing x1anedsm.x1280gxy (contains listitems)
-  let resultsContainer = document.querySelectorAll(
-    "div.x1n2onr6.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1anedsm.x1280gxy"
-  );
+  // -----------------------------------------------------------------------
+  // Locate the search results container.
+  // WhatsApp occasionally changes the class names so we try several selectors
+  // in priority order and stop at the first one that yields results.
+  // -----------------------------------------------------------------------
+  const containerSelectors = [
+    // New structure (2025 update) – grid/list panel that holds the result rows
+    "#app > div > div > div.x78zum5.xdt5ytf.x5yr21d > div > div.x10l6tqk.x13vifvy.x1o0tod.x78zum5.xh8yej3.x5yr21d.x6ikm8r.x10wlt62.x47corl > div._aigw._as6h.false.xevlxbw.x9f619.x1n2onr6.x5yr21d.x17dzmu4.x1i1dayz.x2ipvbc.xjdofhw.x78zum5.xdt5ytf.x570efc.x18dvir5.xxljpkc.xwfak60.x6ikm8r.x10wlt62.x1oy9qf3.xpilrb4.x1t7ytsu.x1vb5itz > div > span > div > span > div > div.x1n2onr6.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1280gxy > div:nth-child(2) > div > div > div",
+    "#app > div > div > div.x78zum5.xdt5ytf.x5yr21d > div > div.x10l6tqk.x13vifvy.x1o0tod.x78zum5.xh8yej3.x5yr21d.x6ikm8r.x10wlt62.x47corl > div._aigw._as6h.false.xevlxbw.x9f619.x1n2onr6.x5yr21d.x17dzmu4.x1i1dayz.x2ipvbc.xjdofhw.x78zum5.xdt5ytf.x570efc.x18dvir5.xxljpkc.xwfak60.x6ikm8r.x10wlt62.x1oy9qf3.xpilrb4.x1t7ytsu.x1vb5itz > div > span > div > span > div > div.x1n2onr6.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1280gxy > div.x9f619.x78zum5.xdt5ytf.x6s0dn4.xhslqc4.x2b8uid.x1c4vz4f.x2lah0s.xdl72j9.x1nhvcw1.xt7dq6l.x15uerrv.xx281p9.x1j3kn9t.x67w97k",
+    "#app > div > div > div.x78zum5.xdt5ytf.x5yr21d > div > div.x10l6tqk.x13vifvy.x1o0tod.x78zum5.xh8yej3.x5yr21d.x6ikm8r.x10wlt62.x47corl > div._aigw._as6h.false.xevlxbw.x9f619.x1n2onr6.x5yr21d.x17dzmu4.x1i1dayz.x2ipvbc.xjdofhw.x78zum5.xdt5ytf.x570efc.x18dvir5.xxljpkc.xwfak60.x6ikm8r.x10wlt62.x1oy9qf3.xpilrb4.x1t7ytsu.x1vb5itz > div > span > div > span > div > div.x1n2onr6.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1280gxy > div._ak72.false.false.false._ak73._asiw._ap1-._ap1_",
+    // "div.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1anedsm.x1280gxy",
+    // Previous structure
+    // "div.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1tkvqr7.x150wa6m",
+    // Generic fallback: the scrollable panel that appears after clicking New Chat
+    // 'div[role="grid"]',
+    // 'div[aria-label="Search results"]',
+  ];
 
-  // Final fallback: old structure
-  if (!resultsContainer.length) {
-    resultsContainer = document.querySelectorAll(
-      "div.x1n2onr6.x1n2onr6.xupqr0c.x78zum5.x1r8uery.x1iyjqo2.xdt5ytf.x6ikm8r.x1odjw0f.x1hc1fzr.x1tkvqr7.x150wa6m"
-    );
-  }
-
-  if (resultsContainer.length) {
-    console.log(`✅ Found results container`, resultsContainer);
+  let resultsContainer = [];
+  for (const sel of containerSelectors) {
+    const found = document.querySelectorAll(sel);
+    if (found.length) {
+      resultsContainer = found;
+      console.log(`✅ Found results container with: "${sel}"`, found);
+      break;
+    }
   }
 
   if (!resultsContainer.length) {
@@ -154,31 +168,31 @@ async function isNumberFoundInResults(number, timeout = 20000) {
 
   while (Date.now() - startTime < timeout) {
     console.log(
-      `[${Date.now() - startTime}ms] Checking for results for '${number}'...`
+      `[${Date.now() - startTime}ms] Checking for results for '${number}'...`,
     );
 
     // Check for network error
     const networkError = Array.from(resultsContainer).find((el) =>
-      el.textContent.includes("Unable to connect to the internet")
+      el.textContent.includes("Unable to connect to the internet"),
     );
     if (networkError !== undefined) {
       console.log(
         `[${
           Date.now() - startTime
-        }ms] Network error detected: ${networkError.textContent.trim()}`
+        }ms] Network error detected: ${networkError.textContent.trim()}`,
       );
 
       const retryButton = resultsContainer[0].querySelector(
-        'button:where(:contains("Retry"), .xjb2p0i)'
+        'button:where(:contains("Retry"), .xjb2p0i)',
       );
-      if (retryButton && true) {
+      if (retryButton) {
         console.log(`[${Date.now() - startTime}ms] Clicking Retry button`);
         retryButton.scrollIntoView({ behavior: "smooth", block: "center" });
         retryButton.click();
         await delay(1000);
       }
       console.log(
-        `[${Date.now() - startTime}ms] Waiting for network recovery...`
+        `[${Date.now() - startTime}ms] Waiting for network recovery...`,
       );
       await delay(networkErrorInterval);
       continue;
@@ -186,21 +200,14 @@ async function isNumberFoundInResults(number, timeout = 20000) {
 
     // Check for loading state
     const loadingIndicator = resultsContainer[0].querySelector(
-      'span[data-visualcompletion="loading-state"]'
+      'span[data-visualcompletion="loading-state"]',
     );
-
     if (loadingIndicator) {
       const isVisible = loadingIndicator.checkVisibility();
       console.log(
-        `[${Date.now() - startTime}ms] Loading indicator found: ${
-          loadingIndicator.outerHTML
-        }, Visible: ${isVisible}`,
-        loadingIndicator
+        `[${Date.now() - startTime}ms] Loading indicator found, Visible: ${isVisible}`,
       );
       if (isVisible) {
-        console.log(
-          `[${Date.now() - startTime}ms] Loading results for '${number}'...`
-        );
         await delay(interval);
         continue;
       }
@@ -208,36 +215,77 @@ async function isNumberFoundInResults(number, timeout = 20000) {
 
     // Check for "No results found"
     const noResults = Array.from(resultsContainer).find((el) =>
-      el.textContent.toLowerCase().includes("no results found")
+      el.textContent.toLowerCase().includes("no results found"),
     );
     if (noResults !== undefined) {
       console.log(
         `[${
           Date.now() - startTime
-        }ms] No results element found: ${noResults.textContent.trim()}`
+        }ms] No results element found: ${noResults.textContent.trim()}`,
       );
       return null;
     }
 
-    // Look for visible search results - try new structure first, then old structure
-    // New structure: div[role="listitem"] containing span[dir="auto"][title]
-    let resultElement = Array.from(
-      resultsContainer[0].querySelectorAll("span[title]")
-    ).find(
-      (el) =>
-        el.textContent.replace(/\D/g, "") ===
-          "2348162958348".replace(/\D/g, "") || el.textContent
+    // ------------------------------------------------------------------
+    // NEW STRUCTURE (2025): WhatsApp now renders each search result as a
+    //   div[data-testid="...-row"]  e.g. "message-yourself-row"
+    // The phone number lives in:  span[dir="auto"][title="+234 ..."]._ao3e
+    // The display name lives in:  span._agr6 > span[dir="auto"]._ao3e
+    //
+    // Strategy:
+    //   1. Try to find a span whose `title` attribute matches the number.
+    //   2. Fall back to matching the span's textContent against the number.
+    //   3. Return the matching span so the caller can traverse up to the
+    //      clickable row element.
+    // ------------------------------------------------------------------
+
+    let resultElement = null;
+
+    // Strategy 1 – match by `title` attribute (most reliable)
+    const allTitledSpans = Array.from(
+      resultsContainer[0].querySelectorAll("span[dir='auto'][title]"),
     );
+    resultElement =
+      allTitledSpans.find((el) => {
+        const titleClean =
+          el.getAttribute("title").replace(/\s+/g, "").trim() ||
+          el.getAttribute("title").replace(/\D/g, "");
+        return titleClean || titleClean === cleanNumber;
+      }) || null;
 
-    console.log(resultElement);
+    // Strategy 2 – match by textContent digits (handles slightly different formatting)
+    if (!resultElement) {
+      const allSpans = Array.from(
+        resultsContainer[0].querySelectorAll("span[dir='auto']"),
+      );
+      resultElement =
+        allSpans.find((el) => {
+          const textClean = el.textContent.replace(/\D/g, "");
+          return textClean.length >= 7 && cleanNumber.endsWith(textClean);
+        }) || null;
+    }
 
-    if (resultElement !== undefined) {
-      const text = resultElement.textContent.replace(/\s+/g, " ").trim();
+    // Strategy 3 – legacy: span[title] (old WhatsApp structure)
+    if (!resultElement) {
+      const legacySpans = Array.from(
+        resultsContainer[0].querySelectorAll("span[title]"),
+      );
+      resultElement =
+        legacySpans.find((el) => {
+          const textClean = el.textContent.replace(/\D/g, "");
+          return textClean && cleanNumber.endsWith(textClean);
+        }) || null;
+    }
+
+    if (resultElement) {
+      const text =
+        resultElement.textContent.replace(/\s+/g, " ").trim() ||
+        resultElement.textContent.replace(/\D/g, "");
       const title = resultElement.getAttribute("title") || "";
       console.log(
         `[${
           Date.now() - startTime
-        }ms] Found visible result for '${number}': Text="${text}", Title="${title}"`
+        }ms] Found result for '${number}': Text="${text}", Title="${title}"`,
       );
       return resultElement;
     }
@@ -248,7 +296,7 @@ async function isNumberFoundInResults(number, timeout = 20000) {
   console.log(
     `[${
       Date.now() - startTime
-    }ms] Timeout waiting for results for '${number}' after ${timeout}ms`
+    }ms] Timeout waiting for results for '${number}' after ${timeout}ms`,
   );
   return "timeout";
 }
@@ -262,7 +310,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
       expectedQuery.trim() === ""
     ) {
       console.log(
-        "⚠️ Empty or invalid expected phone number or name, returning false"
+        "⚠️ Empty or invalid expected phone number or name, returning false",
       );
       return false;
     }
@@ -284,7 +332,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
       // Exact match
       if (displayName.toLowerCase() === headerName.toLowerCase()) {
         console.log(
-          `✅ Display name exact match: "${displayName}" === "${headerName}"`
+          `✅ Display name exact match: "${displayName}" === "${headerName}"`,
         );
         return true;
       }
@@ -295,7 +343,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
         displayName.toLowerCase().includes(headerName.toLowerCase())
       ) {
         console.log(
-          `✅ Display name contains match: "${displayName}" in "${headerName}"`
+          `✅ Display name contains match: "${displayName}" in "${headerName}"`,
         );
         return true;
       }
@@ -316,7 +364,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
         cleanExpected.endsWith(cleanDisplayed)
       ) {
         console.log(
-          `✅ Phone number partial match (ends with): ${cleanExpected} ends with ${cleanDisplayed}`
+          `✅ Phone number partial match (ends with): ${cleanExpected} ends with ${cleanDisplayed}`,
         );
         return true;
       } else if (
@@ -324,7 +372,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
         cleanDisplayed.endsWith(cleanExpected)
       ) {
         console.log(
-          `✅ Phone number partial match (contained in): ${cleanExpected} contained in ${cleanDisplayed}`
+          `✅ Phone number partial match (contained in): ${cleanExpected} contained in ${cleanDisplayed}`,
         );
         return true;
       }
@@ -333,7 +381,7 @@ function isCorrectChatOpen(expectedQuery, expectedDisplayName = null) {
     console.log(
       `❌ No match found. Expected: "${expectedQuery}"${
         expectedQuery ? ` or "${expectedQuery}"` : ""
-      }, Found: "${text}"`
+      }, Found: "${text}"`,
     );
     return false;
   } catch (error) {
@@ -354,23 +402,38 @@ async function clickWhatsAppChatItem(result) {
     result.textContent || result.getAttribute("title") || "";
 
   console.log(
-    `🎯 Verification: phone="${verificationText}", displayName="${verificationText}"`
+    `🎯 Verification: phone="${verificationText}", displayName="${verificationText}"`,
   );
 
   try {
-    // Find the clickable element - new structure uses listitem with button inside
+    // Find the clickable element.
+    // WhatsApp's 2025 search result rows look like:
+    //   div[data-testid="message-yourself-row"]  (or similar -row suffix)
+    //     └─ div._ak72  (the actual clickable inner container)
+    // Older structure used div[role="listitem"] or div[role="row"].
     let clickableElement = null;
 
-    // Method 1: Find listitem, then the button inside it (new structure)
-    const listItem = result.closest(
-      'div[role="listitem"].x10l6tqk.xh8yej3.x1g42fcv'
-    );
-    if (listItem) {
-      clickableElement = listItem.querySelector(
-        'div[tabindex="-1"][role="button"]'
+    // Method 0: New 2025 structure – the result row has a data-testid ending in "-row"
+    //           and contains a div._ak72 that is the clickable area.
+    const testIdRow = result.closest('div[data-testid$="-row"]');
+    if (testIdRow) {
+      // Prefer the inner ._ak72 div if present (has the click handler)
+      clickableElement = testIdRow.querySelector("div._ak72") || testIdRow;
+      console.log(
+        `🎯 Method 0: Found data-testid row: ${testIdRow.getAttribute("data-testid")}`,
       );
-      if (clickableElement) {
-        console.log(`🎯 Found clickable button inside listitem`);
+    }
+
+    // Method 1: Find listitem, then the button inside it (previous structure)
+    if (!clickableElement) {
+      const listItem = result.closest(
+        'div[role="listitem"].x10l6tqk.xh8yej3.x1g42fcv',
+      );
+      if (listItem) {
+        clickableElement =
+          listItem.querySelector('div[tabindex="-1"][role="button"]') ||
+          listItem;
+        console.log(`🎯 Method 1: Found clickable button inside listitem`);
       }
     }
 
@@ -378,12 +441,9 @@ async function clickWhatsAppChatItem(result) {
     if (!clickableElement) {
       const row = result.closest('div[role="row"].x10l6tqk.xh8yej3.x1g42fcv');
       if (row) {
-        clickableElement = row.querySelector(
-          'div[tabindex="-1"][role="button"]'
-        );
-        if (clickableElement) {
-          console.log(`🎯 Found clickable button inside row`);
-        }
+        clickableElement =
+          row.querySelector('div[tabindex="-1"][role="button"]') || row;
+        console.log(`🎯 Method 2: Found clickable button inside row`);
       }
     }
 
@@ -391,7 +451,7 @@ async function clickWhatsAppChatItem(result) {
     if (!clickableElement) {
       clickableElement = result.closest('div[role="gridcell"][tabindex="0"]');
       if (clickableElement) {
-        console.log(`🎯 Found gridcell with tabindex`);
+        console.log(`🎯 Method 3: Found gridcell with tabindex`);
       }
     }
 
@@ -399,7 +459,7 @@ async function clickWhatsAppChatItem(result) {
     if (!clickableElement) {
       clickableElement = result.closest('div[tabindex="-1"][role="button"]');
       if (clickableElement) {
-        console.log(`🎯 Found button directly`);
+        console.log(`🎯 Method 4: Found button directly`);
       }
     }
 
@@ -417,20 +477,20 @@ async function clickWhatsAppChatItem(result) {
     // Verify the clickable element contains our result
     if (!clickableElement.contains(result)) {
       console.log(
-        "⚠️ Warning: Clickable element may not contain the result element, searching for correct parent"
+        "⚠️ Warning: Clickable element may not contain the result element, searching for correct parent",
       );
       // Try to find a parent that contains the result
       const parentWithResult = result.closest(
-        'div[role="listitem"], div[role="row"]'
+        'div[role="listitem"], div[role="row"]',
       );
       if (parentWithResult) {
         const buttonInParent = parentWithResult.querySelector(
-          'div[tabindex="-1"][role="button"]'
+          'div[tabindex="-1"][role="button"]',
         );
         if (buttonInParent) {
           clickableElement = buttonInParent;
           console.log(
-            "✅ Found correct button in parent element that contains result"
+            "✅ Found correct button in parent element that contains result",
           );
         } else {
           // If no button found, use the parent itself
@@ -444,10 +504,10 @@ async function clickWhatsAppChatItem(result) {
       `🎯 Found clickable element: ${
         clickableElement.tagName
       }, role: ${clickableElement.getAttribute(
-        "role"
+        "role",
       )}, tabindex: ${clickableElement.getAttribute(
-        "tabindex"
-      )}, contains result: ${clickableElement.contains(result)}`
+        "tabindex",
+      )}, contains result: ${clickableElement.contains(result)}`,
     );
 
     // Scroll element into view
@@ -514,7 +574,7 @@ async function clickWhatsAppChatItem(result) {
 
     // Method 1.5: Try clicking the listitem element directly
     const listItemElement = result.closest(
-      'div[role="listitem"].x10l6tqk.xh8yej3.x1g42fcv'
+      'div[role="listitem"].x10l6tqk.xh8yej3.x1g42fcv',
     );
     if (listItemElement) {
       console.log("🎯 Method 1.5: Clicking listitem element directly");
@@ -529,7 +589,7 @@ async function clickWhatsAppChatItem(result) {
 
     // Method 1.6: Try clicking the row element directly (fallback)
     const rowElement = result.closest(
-      'div[role="row"].x10l6tqk.xh8yej3.x1g42fcv'
+      'div[role="row"].x10l6tqk.xh8yej3.x1g42fcv',
     );
     if (rowElement) {
       console.log("🎯 Method 1.6: Clicking row element directly");
@@ -609,7 +669,7 @@ async function clickWhatsAppChatItem(result) {
 
     // Method 5: Last resort - click the clickableElement itself with mouse event
     console.log(
-      "🎯 Method 5: Trying to click element directly with mouse event"
+      "🎯 Method 5: Trying to click element directly with mouse event",
     );
     const mouseEvent2 = new MouseEvent("click", {
       view: window,
@@ -668,7 +728,7 @@ async function insertMultilineMessage(inputBox, message) {
           shiftKey: true,
           bubbles: true,
           cancelable: true,
-        })
+        }),
       );
       await delay(80);
     }
@@ -744,6 +804,11 @@ async function verifyNumbers(data, sendResponse) {
   const results = [];
 
   for (let i = 0; i < data.length; i++) {
+    const isStopped = localStorage.getItem("stop") === "true";
+    if (isStopped) {
+      console.log("Verification stopped by user");
+      break;
+    }
     if (!isWhatappToolRunning) {
       console.log("Verification stopped by user");
       break;
@@ -755,11 +820,7 @@ async function verifyNumbers(data, sendResponse) {
     console.log(`\n📱 Verifying ${i + 1}/${data.length}: ${phone}`);
 
     // Validate phone number format
-    if (
-      !phone ||
-      typeof phone !== "string" ||
-      !/^\+?234\d{7,}$/.test(phone.trim())
-    ) {
+    if (!phone || typeof phone !== "string" || !/\d+$/.test(phone.trim())) {
       status = "❌ Invalid format";
       results.push({ phone, status });
       chrome.runtime.sendMessage({ type: "STATUS_UPDATE", phone, status });
@@ -774,11 +835,13 @@ async function verifyNumbers(data, sendResponse) {
         status = "❌ UI Error";
         results.push({ phone, status });
         chrome.runtime.sendMessage({ type: "STATUS_UPDATE", phone, status });
-        continue;
+        break;
       }
 
       // Enter number
       const searchSuccess = await enterNumberInSearchBox(phone);
+      delay(1000, 500);
+      console.log(searchSuccess);
       if (!searchSuccess) {
         status = "❌ Search Error";
         results.push({ phone, status });
@@ -787,9 +850,29 @@ async function verifyNumbers(data, sendResponse) {
       }
 
       // Check results
-      const resultElement = isNumberFoundInResults(phone);
-      if (resultElement) {
+      const result = await isNumberFoundInResults(phone);
+      if (result === "timeout" || result === null) {
+        status = "❌ Not on WhatsApp";
+        results.push({ phone, status });
+        chrome.runtime.sendMessage({
+          type: "STATUS_UPDATE",
+          phone,
+          status,
+        });
+        continue;
+      }
+
+      if (result) {
         status = "✅ Found on WhatsApp";
+      } else {
+        status = "❌ Not on WhatsApp";
+        results.push({ phone, status });
+        chrome.runtime.sendMessage({
+          type: "STATUS_UPDATE",
+          phone,
+          status,
+        });
+        continue;
       }
     } catch (error) {
       console.error("❌ Verification error:", error);
@@ -800,7 +883,7 @@ async function verifyNumbers(data, sendResponse) {
     chrome.runtime.sendMessage({ type: "STATUS_UPDATE", phone, status });
 
     console.log(`📊 Result: ${phone} -> ${status}`);
-    await delay(1000, 200);
+    await delay(3000, 1000);
   }
 
   // Send completion status
@@ -824,6 +907,11 @@ async function sendBulkMessages(data, sendResponse) {
   const results = [];
 
   for (let i = 0; i < data.length; i++) {
+    const isStopped = localStorage.getItem("stop") === "true";
+    if (isStopped) {
+      console.log("Bulk messaging stopped by user");
+      break;
+    }
     if (!isWhatappToolRunning) {
       console.log("Bulk messaging stopped by user");
       break;
@@ -939,15 +1027,15 @@ async function sendBulkMessages(data, sendResponse) {
       console.log("✅ Chat clicked, waiting for chat to load...");
 
       // Wait longer for chat to load completely
-      await delay(3000, 500);
+      await delay(4000, 1000);
 
       // Step 5: Find and fill message input
       console.log("Step 5: Finding message input...");
       const chatInterface = document.querySelector(
-        ".x9f619.x12lumcd.x1qrby5j.xeuugli.x6prxxf.x1fcty0u.x1fc57z9.xk7ee7b.x1716072.x1ygal6x.x89wmna.x1rbbhm9.x13fuv20.x18b5jzi.x1q0q8m5.x1t7ytsu.x178xt8z.x1lun4ml.xso031l.xpilrb4.x1a2a7pz.x13w7htt.x78zum5.x123j3cw.x1gabggj.xs9asl8.xaso8d8.x1diwwjn.xbmvrgn.xod5an3.x1wiwyrm.xt7dq6l.x17m9png.x91sizk.x1vva9xg.x1jfkl46.x6s0dn4.xkfubxc.x1p0mfcu"
+        ".x9f619.x12lumcd.x1qrby5j.xeuugli.x6prxxf.x1fcty0u.x1fc57z9.xk7ee7b.x1716072.x1ygal6x.x89wmna.x1rbbhm9.x13fuv20.x18b5jzi.x1q0q8m5.x1t7ytsu.x178xt8z.x1lun4ml.xso031l.xpilrb4.x1a2a7pz.x13w7htt.x78zum5.x123j3cw.x1gabggj.xs9asl8.xaso8d8.x1diwwjn.xbmvrgn.xod5an3.x1wiwyrm.xt7dq6l.x17m9png.x91sizk.x1vva9xg.x1jfkl46.x6s0dn4.xkfubxc.x1p0mfcu",
       );
       const messageDiv = chatInterface?.querySelector(
-        "div.lexical-rich-text-input"
+        "div.lexical-rich-text-input",
       );
       if (!messageDiv) {
         status = "❌ Message div not found";
@@ -962,7 +1050,7 @@ async function sendBulkMessages(data, sendResponse) {
       }
 
       const inputBox = messageDiv.querySelector(
-        `div[aria-placeholder="Type a message`
+        `div[aria-placeholder="Type a message`,
       );
       if (!inputBox) {
         status = "❌ Message input not found";
@@ -983,7 +1071,7 @@ async function sendBulkMessages(data, sendResponse) {
       inputBox.focus();
       await delay(300);
       await insertMultilineMessage(inputBox, message);
-      await delay(3000, 200);
+      await delay(5000, 1000);
 
       // Step 7: Find and click send button
       console.log("Step 7: Finding send button...");
@@ -994,7 +1082,7 @@ async function sendBulkMessages(data, sendResponse) {
       // Fallback: find by data-icon
       if (!sendBtn) {
         const sendIcon = document.querySelector(
-          'span[data-icon="wds-ic-send-filled"]'
+          'span[data-icon="wds-ic-send-filled"]',
         );
         if (sendIcon) {
           sendBtn =
@@ -1023,7 +1111,7 @@ async function sendBulkMessages(data, sendResponse) {
           console.log("✅ Send button clicked");
           status = "✅ Sent";
           messageSent = true;
-          await delay(1000); // Wait to confirm send
+          await delay(2000); // Wait to confirm send
         } else {
           console.log("⚠️ Send button is disabled, trying Enter key...");
         }
@@ -1032,7 +1120,7 @@ async function sendBulkMessages(data, sendResponse) {
       // Fallback: try Enter key if button not found or disabled
       if (!messageSent) {
         console.log(
-          "🔄 Send button not found or disabled, trying Enter key..."
+          "🔄 Send button not found or disabled, trying Enter key...",
         );
         inputBox.focus();
         await delay(200);
@@ -1043,7 +1131,7 @@ async function sendBulkMessages(data, sendResponse) {
             keyCode: 13,
             bubbles: true,
             cancelable: true,
-          })
+          }),
         );
         inputBox.dispatchEvent(
           new KeyboardEvent("keyup", {
@@ -1052,7 +1140,7 @@ async function sendBulkMessages(data, sendResponse) {
             keyCode: 13,
             bubbles: true,
             cancelable: true,
-          })
+          }),
         );
 
         await delay(1000);
@@ -1073,8 +1161,9 @@ async function sendBulkMessages(data, sendResponse) {
 
     console.log(`📊 Result: ${phone} -> ${status}`);
 
-    // Longer delay between messages to avoid rate limiting
-    await delay(2000, 500);
+    // Longer delay between messages to avoid rate limiting - increased to avoid WhatsApp warnings
+    // WhatsApp recommends 8-15 seconds between bulk messages
+    await delay(10000, 3000);
   }
 
   // Send completion status

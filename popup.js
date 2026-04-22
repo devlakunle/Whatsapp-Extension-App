@@ -90,10 +90,10 @@ function generateExcelFiles() {
   if (isBulkOperation) {
     // For bulk messaging: separate sent and failed messages
     const sentRows = dataWithStatus.filter(
-      (row) => row.Status === "✅ Sent" || row.Status === "✅ Sent (Enter key)"
+      (row) => row.Status === "✅ Sent" || row.Status === "✅ Sent (Enter key)",
     );
     const failedRows = dataWithStatus.filter(
-      (row) => row.Status !== "✅ Sent" && row.Status !== "✅ Sent (Enter key)"
+      (row) => row.Status !== "✅ Sent" && row.Status !== "✅ Sent (Enter key)",
     );
 
     // Create workbook for sent messages
@@ -104,7 +104,7 @@ function generateExcelFiles() {
         XLSX.utils.book_append_sheet(
           sentWorkbook,
           sentWorksheet,
-          "Sent Messages"
+          "Sent Messages",
         );
 
         const sentBase64 = XLSX.write(sentWorkbook, {
@@ -116,7 +116,7 @@ function generateExcelFiles() {
           [Uint8Array.from(atob(sentBase64), (c) => c.charCodeAt(0))],
           {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          }
+          },
         );
         const sentUrl = URL.createObjectURL(sentBlob);
 
@@ -153,7 +153,7 @@ function generateExcelFiles() {
         XLSX.utils.book_append_sheet(
           failedWorkbook,
           failedWorksheet,
-          "Failed Messages"
+          "Failed Messages",
         );
 
         const failedBase64 = XLSX.write(failedWorkbook, {
@@ -165,7 +165,7 @@ function generateExcelFiles() {
           [Uint8Array.from(atob(failedBase64), (c) => c.charCodeAt(0))],
           {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          }
+          },
         );
         const failedUrl = URL.createObjectURL(failedBlob);
 
@@ -195,15 +195,15 @@ function generateExcelFiles() {
     }
 
     logStatus(
-      `✅ Generated ${sentRows.length} sent and ${failedRows.length} failed message results.`
+      `✅ Generated ${sentRows.length} sent and ${failedRows.length} failed message results.`,
     );
   } else {
     // For verification: separate verified and unverified numbers
     const verifiedRows = dataWithStatus.filter(
-      (row) => row.Status === "✅ Found on WhatsApp"
+      (row) => row.Status === "✅ Found on WhatsApp",
     );
     const unverifiedRows = dataWithStatus.filter(
-      (row) => row.Status !== "✅ Found on WhatsApp"
+      (row) => row.Status !== "✅ Found on WhatsApp",
     );
 
     // Create workbook for verified numbers
@@ -214,7 +214,7 @@ function generateExcelFiles() {
         XLSX.utils.book_append_sheet(
           verifiedWorkbook,
           verifiedWorksheet,
-          "Verified Numbers"
+          "Verified Numbers",
         );
 
         const verifiedBase64 = XLSX.write(verifiedWorkbook, {
@@ -226,7 +226,7 @@ function generateExcelFiles() {
           [Uint8Array.from(atob(verifiedBase64), (c) => c.charCodeAt(0))],
           {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          }
+          },
         );
         const verifiedUrl = URL.createObjectURL(verifiedBlob);
 
@@ -263,7 +263,7 @@ function generateExcelFiles() {
         XLSX.utils.book_append_sheet(
           unverifiedWorkbook,
           unverifiedWorksheet,
-          "Unverified Numbers"
+          "Unverified Numbers",
         );
 
         const unverifiedBase64 = XLSX.write(unverifiedWorkbook, {
@@ -275,7 +275,7 @@ function generateExcelFiles() {
           [Uint8Array.from(atob(unverifiedBase64), (c) => c.charCodeAt(0))],
           {
             type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          }
+          },
         );
         const unverifiedUrl = URL.createObjectURL(unverifiedBlob);
 
@@ -305,7 +305,7 @@ function generateExcelFiles() {
     }
 
     logStatus(
-      `✅ Generated ${verifiedRows.length} verified and ${unverifiedRows.length} unverified results.`
+      `✅ Generated ${verifiedRows.length} verified and ${unverifiedRows.length} unverified results.`,
     );
   }
 }
@@ -393,11 +393,13 @@ messageHeaderSelect.addEventListener("change", (e) => {
 startBtn.addEventListener("click", (e) => {
   stopBtn.textContent = "❌ Stop";
   stopBtn.style.background = "#e43e3e";
+  localStorage.setItem("stop", "false");
   if (isOperationRunning) {
     // Stop operation
     isOperationRunning = false;
     startBtn.textContent = "🔄 Resume";
     e.target.style.backgroundColor = "#3535c5";
+    localStorage.setItem("stop", "true");
     logStatus("⏹️ Operation paused by user.");
 
     // Send stop message to content script
@@ -407,7 +409,7 @@ startBtn.addEventListener("click", (e) => {
         if (tabs.length) {
           chrome.tabs.sendMessage(tabs[0].id, { type: "PAUSE_OPERATION" });
         }
-      }
+      },
     );
     return;
   }
@@ -423,7 +425,7 @@ startBtn.addEventListener("click", (e) => {
         if (tabs.length) {
           chrome.tabs.sendMessage(tabs[0].id, { type: "START_OPERATION" });
         }
-      }
+      },
     );
     return;
   }
@@ -453,7 +455,7 @@ startBtn.addEventListener("click", (e) => {
   logStatus(
     `🚀 Starting: ${
       operation === "bulk" ? "Bulk Messaging" : "Number Verification"
-    }...`
+    }...`,
   );
 
   // Prepare data for sending
@@ -489,18 +491,23 @@ startBtn.addEventListener("click", (e) => {
           } else if (response && response.status) {
             logStatus(`ℹ️ ${response.status}`);
           }
-        }
+        },
       );
-    }
+    },
   );
 });
 
 stopBtn.addEventListener("click", (e) => {
   if (stopBtn.textContent === "❌ Stop") {
+    const stopped = localStorage.getItem("stop");
+    if (stopped === "true") {
+      return;
+    }
     stopBtn.textContent = "🔀 Reset";
     stopBtn.style.background = "#3535c5";
     if (isOperationRunning && headers.length > 0) {
       isOperationRunning = false;
+      localStorage.setItem("stop", "true");
       chrome.tabs.query(
         { url: "*://web.whatsapp.com/*", active: true, currentWindow: true },
         (tabs) => {
@@ -508,12 +515,13 @@ stopBtn.addEventListener("click", (e) => {
             chrome.tabs.sendMessage(tabs[0].id, { type: "STOP_OPERATION" });
           }
           return;
-        }
+        },
       );
     }
     return;
   }
   stopBtn.textContent = "❌ Stop";
+  localStorage.setItem("stop", "false");
   stopBtn.style.background = "#e43e3e";
   resetUI();
   return;
@@ -554,7 +562,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     startBtn.style.background = "#0ea50e";
     startBtn.textContent = "🚀 Start";
     logStatus(
-      "❌ Operation stopped by user. Generating Excel files for completed results..."
+      "❌ Operation stopped by user. Generating Excel files for completed results...",
     );
     generateExcelFiles();
   }
